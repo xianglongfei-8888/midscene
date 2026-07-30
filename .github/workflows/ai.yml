@@ -31,23 +31,40 @@ jobs:
   e2e-web:
     runs-on: ${{ fromJSON(vars.LINUX_SELF_HOSTED_RUNNER_LABELS || '"ubuntu-22.04"') }}
     steps:
+    - name: Check model credentials availability
+      id: ai-config
+      run: |
+        if [ -n "${MIDSCENE_MODEL_NAME}" ] && [ -n "${MIDSCENE_MODEL_API_KEY}" ]; then
+          echo "available=true" >> "$GITHUB_OUTPUT"
+        else
+          echo "available=false" >> "$GITHUB_OUTPUT"
+        fi
+
+    - name: Skip web e2e without model credentials
+      if: steps.ai-config.outputs.available != 'true'
+      run: echo "Skipping web e2e because model credentials are unavailable."
+
     - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+      if: steps.ai-config.outputs.available == 'true'
       with:
         fetch-depth: 0
         ref: ${{ github.event.inputs.branch || github.ref }}
 
     - name: Setup pnpm
+      if: steps.ai-config.outputs.available == 'true'
       uses: pnpm/action-setup@eae0cfeb286e66ffb5155f1a79b90583a127a68b # v2.4.1
       with:
         version: 9.3.0
 
     - name: Setup Node.js
+      if: steps.ai-config.outputs.available == 'true'
       uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
       with:
         node-version: '24.13.0'
         cache: 'pnpm'
 
     - name: Cache Playwright dependencies
+      if: steps.ai-config.outputs.available == 'true'
       uses: actions/cache@6f8efc29b200d32929f49075959781ed54ec270c # v3.5.0
       id: cache-playwright
       with:
@@ -57,9 +74,11 @@ jobs:
           ${{ runner.os }}-playwright-
 
     - name: Install dependencies
+      if: steps.ai-config.outputs.available == 'true'
       run: pnpm install --frozen-lockfile --ignore-scripts
 
     - name: Install Playwright dependencies
+      if: steps.ai-config.outputs.available == 'true'
       run: |
         cd packages/web-integration
         if [ "${{ steps.cache-playwright.outputs.cache-hit }}" != "true" ]; then
@@ -69,22 +88,25 @@ jobs:
         fi
 
     - name: Install puppeteer dependencies
+      if: steps.ai-config.outputs.available == 'true'
       run: |
         cd packages/web-integration
         npx puppeteer browsers install chrome
 
     - name: Build project
+      if: steps.ai-config.outputs.available == 'true'
       run: pnpm run build
 
     # Cache behavior uses explicit fixture configuration in the standard suite.
     # MIDSCENE_CACHE does not override those options, so a second full run is redundant.
     - name: Run e2e tests
+      if: steps.ai-config.outputs.available == 'true'
       run: pnpm run e2e
       id: e2e-tests
       continue-on-error: true
 
     - name: Upload e2e report
-      if: always()
+      if: always() && steps.ai-config.outputs.available == 'true'
       uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
       with:
         name: e2e-report
@@ -92,12 +114,13 @@ jobs:
         if-no-files-found: ignore
 
     - name: Run e2e tests report
+      if: steps.ai-config.outputs.available == 'true'
       run: pnpm run e2e:report
       id: e2e-tests-report
       continue-on-error: true
 
     - name: Upload e2e report output
-      if: always()
+      if: always() && steps.ai-config.outputs.available == 'true'
       uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
       with:
         name: e2e-report-output
@@ -105,7 +128,7 @@ jobs:
         if-no-files-found: ignore
 
     - name: Check if tests failed
-      if: steps.e2e-tests.outcome == 'failure' || steps.e2e-tests-report.outcome == 'failure'
+      if: steps.ai-config.outputs.available == 'true' && (steps.e2e-tests.outcome == 'failure' || steps.e2e-tests-report.outcome == 'failure')
       run: |
         echo "::error::The following e2e tests failed:"
         if [ "${{ steps.e2e-tests.outcome }}" == "failure" ]; then echo "  - e2e (basic)"; fi
@@ -113,25 +136,44 @@ jobs:
         exit 1
 
   e2e-report:
+    # This job generates report demos from real AI YAML fixtures, so skip it when
+    # model credentials are unavailable (for example on forked PRs).
     runs-on: ${{ fromJSON(vars.LINUX_SELF_HOSTED_RUNNER_LABELS || '"ubuntu-22.04"') }}
     steps:
+    - name: Check model credentials availability
+      id: ai-config
+      run: |
+        if [ -n "${MIDSCENE_MODEL_NAME}" ] && [ -n "${MIDSCENE_MODEL_API_KEY}" ]; then
+          echo "available=true" >> "$GITHUB_OUTPUT"
+        else
+          echo "available=false" >> "$GITHUB_OUTPUT"
+        fi
+
+    - name: Skip apps/report e2e without model credentials
+      if: steps.ai-config.outputs.available != 'true'
+      run: echo "Skipping apps/report e2e because model credentials are unavailable."
+
     - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+      if: steps.ai-config.outputs.available == 'true'
       with:
         fetch-depth: 0
         ref: ${{ github.event.inputs.branch || github.ref }}
 
     - name: Setup pnpm
+      if: steps.ai-config.outputs.available == 'true'
       uses: pnpm/action-setup@eae0cfeb286e66ffb5155f1a79b90583a127a68b # v2.4.1
       with:
         version: 9.3.0
 
     - name: Setup Node.js
+      if: steps.ai-config.outputs.available == 'true'
       uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
       with:
         node-version: '24.13.0'
         cache: 'pnpm'
 
     - name: Cache Playwright dependencies
+      if: steps.ai-config.outputs.available == 'true'
       uses: actions/cache@6f8efc29b200d32929f49075959781ed54ec270c # v3.5.0
       id: cache-playwright
       with:
@@ -141,9 +183,11 @@ jobs:
           ${{ runner.os }}-playwright-
 
     - name: Install dependencies
+      if: steps.ai-config.outputs.available == 'true'
       run: pnpm install --frozen-lockfile --ignore-scripts
 
     - name: Install Playwright dependencies
+      if: steps.ai-config.outputs.available == 'true'
       run: |
         cd packages/web-integration
         if [ "${{ steps.cache-playwright.outputs.cache-hit }}" != "true" ]; then
@@ -153,19 +197,22 @@ jobs:
         fi
 
     - name: Install puppeteer dependencies
+      if: steps.ai-config.outputs.available == 'true'
       run: |
         cd packages/web-integration
         npx puppeteer browsers install chrome
 
     - name: Build project
+      if: steps.ai-config.outputs.available == 'true'
       run: pnpm run build
 
     - name: Run apps/report e2e tests
+      if: steps.ai-config.outputs.available == 'true'
       run: cd apps/report && pnpm run e2e
       id: e2e-tests-app-report
 
     - name: Upload apps/report e2e report
-      if: always()
+      if: always() && steps.ai-config.outputs.available == 'true'
       uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
       with:
         name: e2e-app-report-output

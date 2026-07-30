@@ -34,41 +34,61 @@ jobs:
       CI: 1
 
     steps:
+    - name: Check model credentials availability
+      id: ai-config
+      run: |
+        if [ -n "${MIDSCENE_MODEL_NAME}" ] && [ -n "${MIDSCENE_MODEL_API_KEY}" ]; then
+          echo "available=true" >> "$GITHUB_OUTPUT"
+        else
+          echo "available=false" >> "$GITHUB_OUTPUT"
+        fi
+
+    - name: Skip AI unit test workflow without model credentials
+      if: steps.ai-config.outputs.available != 'true'
+      run: echo "Skipping AI unit tests because model credentials are unavailable."
+
     - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+      if: steps.ai-config.outputs.available == 'true'
       with:
         fetch-depth: 0
         ref: ${{ github.event.inputs.branch || github.ref }}
 
     - name: Setup pnpm
+      if: steps.ai-config.outputs.available == 'true'
       uses: pnpm/action-setup@eae0cfeb286e66ffb5155f1a79b90583a127a68b # v2.4.1
       with:
         version: 9.3.0
   
     - name: Setup Node.js
+      if: steps.ai-config.outputs.available == 'true'
       uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
       with:
         node-version: '24.13.0'
         cache: 'pnpm'
 
     - name: Install dependencies
+      if: steps.ai-config.outputs.available == 'true'
       run: pnpm install --frozen-lockfile --ignore-scripts
 
     - name: Install puppeteer dependencies
+      if: steps.ai-config.outputs.available == 'true'
       run: |
         cd packages/web-integration
         npx puppeteer browsers install chrome
 
     - name: Build project
+      if: steps.ai-config.outputs.available == 'true'
       run: pnpm run build
     
     - name: Run tests with coverage
+      if: steps.ai-config.outputs.available == 'true'
       # Keep model request concurrency comparable to the former 4-core hosted runner.
       run: MIDSCENE_COVERAGE_DIR=coverage-ai pnpm exec nx run-many --target=test:ai --projects=@midscene/core,@midscene/web,@midscene/cli --verbose -- --coverage --minWorkers=1 --maxWorkers=4
       id: test-ai
       continue-on-error: true
 
     - name: Upload test-ai output
-      if: always()
+      if: always() && steps.ai-config.outputs.available == 'true'
       uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
       with:
         name: test-ai-output
@@ -77,7 +97,7 @@ jobs:
 
     - name: Upload AI coverage reports
       id: upload-ai-coverage
-      if: always()
+      if: always() && steps.ai-config.outputs.available == 'true'
       uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
       with:
         name: ai-coverage
@@ -85,7 +105,7 @@ jobs:
         if-no-files-found: ignore
 
     - name: Write AI coverage summary
-      if: always()
+      if: always() && steps.ai-config.outputs.available == 'true'
       env:
         COVERAGE_DIR: coverage-ai
         COVERAGE_TITLE: AI Test Coverage
@@ -94,5 +114,5 @@ jobs:
       run: node scripts/github-coverage-summary.js
 
     - name: Check if script failed
-      if: steps.test-ai.outcome == 'failure'
+      if: steps.ai-config.outputs.available == 'true' && steps.test-ai.outcome == 'failure'
       run: exit 1
